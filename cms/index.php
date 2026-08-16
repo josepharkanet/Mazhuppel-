@@ -30,6 +30,10 @@ const UPLOAD_URL  = '/uploads';
 
 /* Section definitions — field lists drive the forms below. */
 $TYPES = [
+    'hero' => [
+        'label'  => 'Home Hero',
+        'fields' => ['title'],
+    ],
     'new-chits' => [
         'label'  => 'New Kuries',
         'fields' => ['title', 'href'],
@@ -195,6 +199,12 @@ if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $mob = $imgMob ?? ($existing['imageMobile'] ?? '');
             if ($mob !== '') { $row['imageMobile'] = $mob; }
         }
+    } elseif ($type === 'hero') {
+        // Home hero slide: background image + eyebrow + title + subtitle
+        $row['eyebrow']  = trim((string) ($_POST['eyebrow'] ?? ''));
+        $row['subtitle'] = trim((string) ($_POST['subtitle'] ?? ''));
+        $img = handle_upload('image', $upErr);
+        $row['image'] = $img ?? ($existing['image'] ?? '');
     } elseif ($type === 'careers') {
         // Careers: two modes — design (job post fields) or poster (uploaded image)
         $mode = (($_POST['mode'] ?? 'design') === 'poster') ? 'poster' : 'design';
@@ -266,7 +276,7 @@ if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // order fields consistently
-        $order = ['id', 'type', 'title', 'employmentType', 'date', 'image', 'imageMobile', 'photos', 'amount', 'duration', 'commission', 'features', 'badge', 'summary', 'description', 'href', 'locations'];
+        $order = ['id', 'type', 'title', 'eyebrow', 'subtitle', 'employmentType', 'date', 'image', 'imageMobile', 'photos', 'amount', 'duration', 'commission', 'features', 'badge', 'summary', 'description', 'href', 'locations'];
         $ordered = [];
         foreach ($order as $k) { if (array_key_exists($k, $row)) { $ordered[$k] = $row[$k]; } }
         foreach ($row as $k => $v) { if (!array_key_exists($k, $ordered)) { $ordered[$k] = $v; } }
@@ -424,6 +434,7 @@ function render_list(array $TYPES, string $type, string $csrf): void {
           <?php if (!empty($r['amount'])): ?><span><?= h($r['amount']) ?><?= !empty($r['duration']) ? ' · ' . h($r['duration']) : '' ?></span><?php endif; ?>
           <?php if (!empty($r['locations'])): ?><span><?= h(implode(', ', $r['locations'])) ?></span><?php endif; ?>
           <?php if (!empty($r['photos'])): $album = array_unique(array_filter(array_merge([$r['image'] ?? ''], (array) $r['photos']))); ?><span><?= count($album) ?> photos</span><?php endif; ?>
+          <?php if (!empty($r['subtitle'])): ?><span><?= h($r['subtitle']) ?></span><?php endif; ?>
           <?php if (!empty($r['summary'])): ?><span><?= h($r['summary']) ?></span><?php endif; ?>
         </div>
         <div class="acts">
@@ -444,6 +455,7 @@ function render_list(array $TYPES, string $type, string $csrf): void {
 }
 
 function render_form(array $TYPES, string $type, ?array $r, string $csrf): void {
+    if ($type === 'hero')      { render_hero_form($type, $r, $csrf); return; }
     if ($type === 'new-chits') { render_kuri_form($type, $r, $csrf); return; }
     if ($type === 'careers')   { render_job_form($type, $r, $csrf); return; }
     if ($type === 'gallery')   { render_event_form($type, $r, $csrf); return; }
@@ -682,6 +694,41 @@ function render_event_form(string $type, ?array $r, string $csrf): void {
       <label for="photos">Add photos <span style="font-weight:400;color:var(--muted)">(you can select several at once)</span></label>
       <input type="file" id="photos" name="photos[]" accept="image/*" multiple>
       <div class="hint">JPG, PNG, WEBP or GIF, up to 8 MB each. These appear when a visitor opens the event.</div>
+
+      <div style="margin-top:20px;display:flex;gap:10px">
+        <button class="btn primary" type="submit">Save</button>
+        <a class="btn" href="?type=<?= h($type) ?>">Cancel</a>
+      </div>
+    </form>
+  </div>
+<?php }
+
+function render_hero_form(string $type, ?array $r, string $csrf): void {
+    $val = fn(string $k) => h($r[$k] ?? '');
+    ?>
+  <div class="head">
+    <h1><?= $r ? 'Edit' : 'Add' ?> — Hero Slide</h1>
+    <a class="btn" href="?type=<?= h($type) ?>">← Back</a>
+  </div>
+  <div class="card">
+    <div class="hint" style="margin-bottom:14px">These are the sliding banners at the very top of the home page. Add a few and they auto-rotate. Drag order with the ↑ ↓ buttons on the list.</div>
+    <form method="post" action="?action=save&type=<?= h($type) ?>" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+      <input type="hidden" name="id" value="<?= h($r['id'] ?? '') ?>">
+
+      <label for="eyebrow">Eyebrow <span style="font-weight:400;color:var(--muted)">(small pill above the title, optional)</span></label>
+      <input type="text" id="eyebrow" name="eyebrow" value="<?= $val('eyebrow') ?>" placeholder="Kerala Government Registered Chits">
+
+      <label for="title">Title <span style="font-weight:400;color:var(--muted)">(main heading)</span></label>
+      <input type="text" id="title" name="title" value="<?= $val('title') ?>" required placeholder="നല്ല നാളേക്കായ് കരുതിവെക്കാം.">
+
+      <label for="subtitle">Subtitle <span style="font-weight:400;color:var(--muted)">(supporting line, optional)</span></label>
+      <textarea id="subtitle" name="subtitle" placeholder="Short line shown under the title"><?= $val('subtitle') ?></textarea>
+
+      <label for="image">Background image <?= $r ? '<span style="font-weight:400;color:var(--muted)">(leave empty to keep current)</span>' : '' ?></label>
+      <input type="file" id="image" name="image" accept="image/*">
+      <?php if (!empty($r['image'])): ?><img class="thumb" src="<?= h($r['image']) ?>" alt=""><?php endif; ?>
+      <div class="hint">Wide landscape photo works best — it fills the banner behind the text. JPG, PNG or WEBP, up to 8 MB.</div>
 
       <div style="margin-top:20px;display:flex;gap:10px">
         <button class="btn primary" type="submit">Save</button>
