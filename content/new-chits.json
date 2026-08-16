@@ -1,0 +1,45 @@
+[
+  {
+    "id": "monthly-chitty",
+    "type": "design",
+    "title": "Monthly Chitty",
+    "amount": "₹1 Lakh to ₹10 Lakh",
+    "duration": "20 to 40 months",
+    "commission": "5%",
+    "features": [
+      "Government-registered & ISO certified",
+      "Easy monthly installments",
+      "Ideal for long-term savings & big goals"
+    ],
+    "badge": "Popular",
+    "href": "/contact"
+  },
+  {
+    "id": "weekly-chitty",
+    "type": "design",
+    "title": "Weekly Chitty",
+    "amount": "₹1 Lakh to ₹2 Lakh",
+    "duration": "100 weeks",
+    "commission": "5%",
+    "features": [
+      "Quick access to your funds",
+      "Small, easy weekly installments",
+      "Great for short-term needs"
+    ],
+    "href": "/contact"
+  },
+  {
+    "id": "business-doorstep",
+    "type": "design",
+    "title": "Business & Doorstep Kuri",
+    "amount": "Custom plans",
+    "duration": "Flexible",
+    "commission": "5%",
+    "features": [
+      "Tailored for shops, bakeries & hotels",
+      "Doorstep daily / weekly collection",
+      "Manage cash flow & expansion"
+    ],
+    "href": "/contact"
+  }
+]

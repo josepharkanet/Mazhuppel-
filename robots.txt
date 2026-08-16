@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /cms/
+Disallow: /api/
+
+Sitemap: https://mazhuppelchits.com/sitemap.xml
