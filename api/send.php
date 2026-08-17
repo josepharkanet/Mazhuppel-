@@ -8,13 +8,13 @@
  *   Enquiries are routed by form type to the mailboxes in $RECIPIENTS below.
  *   Both must be REAL mailboxes on this domain (cPanel → Email Accounts) so that
  *   mail sends and isn't marked as spam:
- *     • general / consultation / contact  ->  info@mazhuppelchits.com
+ *     • general / consultation / contact  ->  ho@mazhuppelchits.com
  *     • careers / job applications         ->  hr@mazhuppelchits.com
  */
 declare(strict_types=1);
 
 $RECIPIENTS = [
-    'consult' => 'info@mazhuppelchits.com', // general / consultation / contact
+    'consult' => 'ho@mazhuppelchits.com', // general / consultation / contact
     'job'     => 'hr@mazhuppelchits.com',   // careers / job applications
 ];
 
