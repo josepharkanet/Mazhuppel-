@@ -27,6 +27,7 @@ const CMS_PASSWORD = '__SET_ON_SERVER__';
 const CONTENT_DIR = __DIR__ . '/../content';
 const UPLOAD_DIR  = __DIR__ . '/../uploads';
 const UPLOAD_URL  = '/uploads';
+const APP_DIR     = __DIR__ . '/../../applications'; // job applications store (outside web root)
 
 /* Section definitions — field lists drive the forms below. */
 $TYPES = [
@@ -162,7 +163,52 @@ if (!is_authed()) {
     exit;
 }
 
-if (!isset($TYPES[$type])) { $type = 'new-chits'; }
+/* ---- Job applications inbox (stored outside public_html) --------- */
+function load_apps(): array {
+    $f = APP_DIR . '/applications.json';
+    if (!is_file($f)) { return []; }
+    $d = json_decode((string) file_get_contents($f), true);
+    return is_array($d) ? $d : [];
+}
+function save_apps(array $rows): void {
+    if (!is_dir(APP_DIR)) { @mkdir(APP_DIR, 0700, true); }
+    @file_put_contents(APP_DIR . '/applications.json',
+        json_encode(array_values($rows), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+/* secure CV download — served only to a logged-in dashboard user */
+if ($action === 'cv') {
+    $file = basename((string) ($_GET['file'] ?? ''));
+    $path = APP_DIR . '/cv/' . $file;
+    if ($file !== '' && is_file($path)) {
+        $ext  = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        $mime = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',
+                 'png' => 'image/png', 'webp' => 'image/webp'][$ext] ?? 'application/octet-stream';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . $file . '"');
+        header('Content-Length: ' . filesize($path));
+        header('X-Robots-Tag: noindex');
+        readfile($path);
+        exit;
+    }
+    http_response_code(404);
+    exit('CV not found.');
+}
+
+/* delete one application (and its stored CV) */
+if ($action === 'delapp' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_ok()) { http_response_code(400); exit('Bad request token.'); }
+    $id   = (string) ($_POST['id'] ?? '');
+    $rows = load_apps();
+    foreach ($rows as $r) {
+        if (($r['id'] ?? '') === $id && !empty($r['cv'])) { @unlink(APP_DIR . '/cv/' . basename((string) $r['cv'])); }
+    }
+    $rows = array_values(array_filter($rows, fn($r) => ($r['id'] ?? '') !== $id));
+    save_apps($rows);
+    redirect('?type=applications&msg=' . urlencode('Deleted.'));
+}
+
+if (!isset($TYPES[$type]) && $type !== 'applications') { $type = 'new-chits'; }
 
 /* save (add or edit) */
 if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -396,8 +442,9 @@ function render_login(string $notice): void {
 <?php }
 
 function render_page(array $TYPES, string $type, string $notice, ?array $editRow, bool $isNew): void {
-    $csrf = csrf_token();
-    page_head($TYPES[$type]['label']); ?>
+    $csrf  = csrf_token();
+    $label = $type === 'applications' ? 'Applications' : $TYPES[$type]['label'];
+    page_head($label); ?>
 <header class="top">
   <b>Mazhuppel Chits · CMS</b>
   <span><a href="/" target="_blank">View site ↗</a> &nbsp;·&nbsp; <a href="?action=logout">Log out</a></span>
@@ -407,13 +454,54 @@ function render_page(array $TYPES, string $type, string $notice, ?array $editRow
     <?php foreach ($TYPES as $k => $t): ?>
       <a class="<?= $k === $type ? 'on' : '' ?>" href="?type=<?= h($k) ?>"><?= h($t['label']) ?></a>
     <?php endforeach; ?>
+    <a class="<?= $type === 'applications' ? 'on' : '' ?>" href="?type=applications">Applications</a>
   </div>
 
   <?php if ($notice): ?><div class="notice"><?= h($notice) ?></div><?php endif; ?>
 
-  <?php if ($isNew || $editRow !== null): render_form($TYPES, $type, $editRow, $csrf); else: render_list($TYPES, $type, $csrf); endif; ?>
+  <?php
+    if ($type === 'applications') { render_apps($csrf); }
+    elseif ($isNew || $editRow !== null) { render_form($TYPES, $type, $editRow, $csrf); }
+    else { render_list($TYPES, $type, $csrf); }
+  ?>
 </div></body></html>
 <?php }
+
+function render_apps(string $csrf): void {
+    $apps = array_reverse(load_apps()); // newest first
+    ?>
+  <div class="head">
+    <h1>Applications <span style="color:var(--muted);font-weight:400">(<?= count($apps) ?>)</span></h1>
+  </div>
+  <?php if (!$apps): ?>
+    <div class="card" style="color:var(--muted)">No job applications yet. They appear here the moment someone applies (a copy is also emailed to HR).</div>
+  <?php endif; ?>
+  <?php foreach ($apps as $a):
+      $role  = trim(preg_replace('/^Job Application:\s*/', '', (string) ($a['role'] ?? '')) ?? '');
+      $phone = preg_replace('/\s+/', '', (string) ($a['phone'] ?? '')); ?>
+    <div class="card">
+      <div class="row">
+        <div class="body">
+          <b><?= h($a['name'] ?? '(no name)') ?><?php if ($role !== ''): ?> <span style="font-size:11px;font-weight:600;color:var(--gold)">[<?= h($role) ?>]</span><?php endif; ?></b>
+          <span><?= h($a['date'] ?? '') ?></span>
+          <span>Phone: <a href="tel:<?= h($phone) ?>"><?= h($a['phone'] ?? '') ?></a><?php if (!empty($a['email'])): ?> &nbsp;·&nbsp; Email: <a href="mailto:<?= h($a['email']) ?>"><?= h($a['email']) ?></a><?php endif; ?></span>
+          <?php if (!empty($a['message'])): ?><span style="white-space:normal;color:#16203a"><?= h($a['message']) ?></span><?php endif; ?>
+        </div>
+        <div class="acts">
+          <?php if (!empty($a['cv'])): ?>
+            <a class="btn small primary" href="?action=cv&file=<?= urlencode((string) $a['cv']) ?>" target="_blank" rel="noreferrer">Download CV</a>
+          <?php else: ?>
+            <span style="font-size:12px;color:var(--muted)">No CV</span>
+          <?php endif; ?>
+          <form class="inline" method="post" action="?action=delapp" onsubmit="return confirm('Delete this application?')">
+            <input type="hidden" name="csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= h($a['id'] ?? '') ?>">
+            <button class="btn small danger" type="submit">Delete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  <?php endforeach;
+}
 
 function render_list(array $TYPES, string $type, string $csrf): void {
     $rows = load_json($type); ?>

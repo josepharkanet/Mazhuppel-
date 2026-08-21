@@ -128,6 +128,39 @@ if ($cvErr === UPLOAD_ERR_OK) {
     $sent = @mail($to, $subject, $body, $headers, "-f{$from}");
 }
 
+// Store job applications in a private folder (outside public_html) for the CMS inbox.
+if ($ftype === 'job') {
+    $appDir   = __DIR__ . '/../../applications';
+    $cvStored = '';
+    $cvName   = '';
+    if ($cvErr === UPLOAD_ERR_OK && isset($fdata, $ext, $fname) && $fdata !== '') {
+        if (!is_dir("{$appDir}/cv")) { @mkdir("{$appDir}/cv", 0700, true); }
+        $candidate = date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $ext;
+        if (@file_put_contents("{$appDir}/cv/{$candidate}", $fdata) !== false) {
+            @chmod("{$appDir}/cv/{$candidate}", 0600);
+            $cvStored = $candidate;
+            $cvName   = $fname;
+        }
+    }
+    if (!is_dir($appDir)) { @mkdir($appDir, 0700, true); }
+    $logFile = "{$appDir}/applications.json";
+    $log     = is_file($logFile) ? json_decode((string) file_get_contents($logFile), true) : [];
+    if (!is_array($log)) { $log = []; }
+    $log[]   = [
+        'id'      => date('YmdHis') . bin2hex(random_bytes(3)),
+        'date'    => date('Y-m-d H:i:s'),
+        'role'    => $about,
+        'name'    => $name,
+        'phone'   => $phone,
+        'email'   => $email,
+        'message' => $message,
+        'cv'      => $cvStored,
+        'cvName'  => $cvName,
+        'page'    => $page,
+    ];
+    @file_put_contents($logFile, json_encode($log, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
 if ($sent) {
     echo json_encode(['ok' => true]);
 } else {
