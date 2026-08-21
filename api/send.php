@@ -66,13 +66,67 @@ $body .= "Message : " . ($message !== '' ? $message : '(none)') . "\n";
 $body .= "Page    : {$page}\n";
 $body .= "Time    : " . date('Y-m-d H:i:s') . "\n";
 
-$replyTo  = filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : $from;
-$headers  = "From: Mazhuppel Chits Website <{$from}>\r\n";
-$headers .= "Reply-To: {$replyTo}\r\n";
-$headers .= "Content-Type: text/plain; charset=utf-8\r\n";
-$headers .= "X-Mailer: PHP/" . phpversion();
+$replyTo = filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : $from;
 
-$sent = @mail($to, $subject, $body, $headers, "-f{$from}");
+// Optional CV attachment (job applications).
+$cvErr = $_FILES['cv']['error'] ?? UPLOAD_ERR_NO_FILE;
+if ($cvErr !== UPLOAD_ERR_NO_FILE && $cvErr !== UPLOAD_ERR_OK) {
+    http_response_code(422);
+    echo json_encode(['ok' => false, 'error' => 'Your CV could not be uploaded (it may be too large). Try a smaller file.']);
+    exit;
+}
+
+if ($cvErr === UPLOAD_ERR_OK) {
+    $cv    = $_FILES['cv'];
+    $types = [
+        'pdf'  => 'application/pdf',
+        'doc'  => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'jpg'  => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp',
+    ];
+    $ext = strtolower(pathinfo((string) $cv['name'], PATHINFO_EXTENSION));
+    if ($cv['size'] > 6 * 1024 * 1024) {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'error' => 'Your CV is too large (max 6 MB).']);
+        exit;
+    }
+    if (!isset($types[$ext])) {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'error' => 'CV must be a PDF, Word document or image.']);
+        exit;
+    }
+    $fname = preg_replace('/[^A-Za-z0-9._-]/', '_', (string) $cv['name']);
+    $fdata = (string) @file_get_contents($cv['tmp_name']);
+    $bnd   = '=_mzc_' . bin2hex(random_bytes(12));
+
+    $body .= "CV      : attached ({$fname})\n";
+
+    $headers  = "From: Mazhuppel Chits Website <{$from}>\r\n";
+    $headers .= "Reply-To: {$replyTo}\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: multipart/mixed; boundary=\"{$bnd}\"\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion();
+
+    $mime  = "--{$bnd}\r\n";
+    $mime .= "Content-Type: text/plain; charset=utf-8\r\n";
+    $mime .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+    $mime .= $body . "\r\n";
+    $mime .= "--{$bnd}\r\n";
+    $mime .= "Content-Type: {$types[$ext]}; name=\"{$fname}\"\r\n";
+    $mime .= "Content-Transfer-Encoding: base64\r\n";
+    $mime .= "Content-Disposition: attachment; filename=\"{$fname}\"\r\n\r\n";
+    $mime .= chunk_split(base64_encode($fdata)) . "\r\n";
+    $mime .= "--{$bnd}--";
+
+    $sent = @mail($to, $subject, $mime, $headers, "-f{$from}");
+} else {
+    $headers  = "From: Mazhuppel Chits Website <{$from}>\r\n";
+    $headers .= "Reply-To: {$replyTo}\r\n";
+    $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion();
+
+    $sent = @mail($to, $subject, $body, $headers, "-f{$from}");
+}
 
 if ($sent) {
     echo json_encode(['ok' => true]);
