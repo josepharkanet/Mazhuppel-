@@ -208,7 +208,7 @@ if ($action === 'delapp' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('?type=applications&msg=' . urlencode('Deleted.'));
 }
 
-if (!isset($TYPES[$type]) && $type !== 'applications') { $type = 'new-chits'; }
+if (!isset($TYPES[$type]) && !in_array($type, ['applications', 'agreements'], true)) { $type = 'new-chits'; }
 
 /* save (add or edit) */
 if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -443,7 +443,8 @@ function render_login(string $notice): void {
 
 function render_page(array $TYPES, string $type, string $notice, ?array $editRow, bool $isNew): void {
     $csrf  = csrf_token();
-    $label = $type === 'applications' ? 'Applications' : $TYPES[$type]['label'];
+    $extraLabels = ['applications' => 'Applications', 'agreements' => 'Filled Forms'];
+    $label = $extraLabels[$type] ?? $TYPES[$type]['label'];
     page_head($label); ?>
 <header class="top">
   <b>Mazhuppel Chits · CMS</b>
@@ -455,29 +456,33 @@ function render_page(array $TYPES, string $type, string $notice, ?array $editRow
       <a class="<?= $k === $type ? 'on' : '' ?>" href="?type=<?= h($k) ?>"><?= h($t['label']) ?></a>
     <?php endforeach; ?>
     <a class="<?= $type === 'applications' ? 'on' : '' ?>" href="?type=applications">Applications</a>
+    <a class="<?= $type === 'agreements' ? 'on' : '' ?>" href="?type=agreements">Filled Forms</a>
   </div>
 
   <?php if ($notice): ?><div class="notice"><?= h($notice) ?></div><?php endif; ?>
 
   <?php
-    if ($type === 'applications') { render_apps($csrf); }
+    if ($type === 'applications') { render_apps($csrf, 'application'); }
+    elseif ($type === 'agreements') { render_apps($csrf, 'agreement'); }
     elseif ($isNew || $editRow !== null) { render_form($TYPES, $type, $editRow, $csrf); }
     else { render_list($TYPES, $type, $csrf); }
   ?>
 </div></body></html>
 <?php }
 
-function render_apps(string $csrf): void {
-    $apps = array_reverse(load_apps()); // newest first
+function render_apps(string $csrf, string $kind = 'application'): void {
+    $apps  = array_values(array_filter(load_apps(), fn($a) => ($a['kind'] ?? 'application') === $kind));
+    $apps  = array_reverse($apps); // newest first
+    $isAgr = $kind === 'agreement';
     ?>
   <div class="head">
-    <h1>Applications <span style="color:var(--muted);font-weight:400">(<?= count($apps) ?>)</span></h1>
+    <h1><?= $isAgr ? 'Filled Forms' : 'Applications' ?> <span style="color:var(--muted);font-weight:400">(<?= count($apps) ?>)</span></h1>
   </div>
   <?php if (!$apps): ?>
-    <div class="card" style="color:var(--muted)">No job applications yet. They appear here the moment someone applies (a copy is also emailed to HR).</div>
+    <div class="card" style="color:var(--muted)"><?= $isAgr ? 'No filled forms uploaded yet. They appear here when someone submits a completed agreement (a copy is also emailed to the office).' : 'No job applications yet. They appear here the moment someone applies (a copy is also emailed to HR).' ?></div>
   <?php endif; ?>
   <?php foreach ($apps as $a):
-      $role  = trim(preg_replace('/^Job Application:\s*/', '', (string) ($a['role'] ?? '')) ?? '');
+      $role  = trim(preg_replace('/^(Job Application|Filled):\s*/', '', (string) ($a['role'] ?? '')) ?? '');
       $phone = preg_replace('/\s+/', '', (string) ($a['phone'] ?? '')); ?>
     <div class="card">
       <div class="row">
@@ -489,11 +494,11 @@ function render_apps(string $csrf): void {
         </div>
         <div class="acts">
           <?php if (!empty($a['cv'])): ?>
-            <a class="btn small primary" href="?action=cv&file=<?= urlencode((string) $a['cv']) ?>" target="_blank" rel="noreferrer">Download CV</a>
+            <a class="btn small primary" href="?action=cv&file=<?= urlencode((string) $a['cv']) ?>" target="_blank" rel="noreferrer"><?= $isAgr ? 'View / Download' : 'Download CV' ?></a>
           <?php else: ?>
-            <span style="font-size:12px;color:var(--muted)">No CV</span>
+            <span style="font-size:12px;color:var(--muted)">No file</span>
           <?php endif; ?>
-          <form class="inline" method="post" action="?action=delapp" onsubmit="return confirm('Delete this application?')">
+          <form class="inline" method="post" action="?action=delapp" onsubmit="return confirm('Delete this entry?')">
             <input type="hidden" name="csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= h($a['id'] ?? '') ?>">
             <button class="btn small danger" type="submit">Delete</button>
           </form>

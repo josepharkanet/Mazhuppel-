@@ -14,8 +14,9 @@
 declare(strict_types=1);
 
 $RECIPIENTS = [
-    'consult' => 'ho@mazhuppelchits.com', // general / consultation / contact
-    'job'     => 'hr@mazhuppelchits.com',   // careers / job applications
+    'consult'   => 'ho@mazhuppelchits.com', // general / consultation / contact
+    'job'       => 'hr@mazhuppelchits.com', // careers / job applications
+    'agreement' => 'ho@mazhuppelchits.com', // filled / signed agreement uploads
 ];
 
 header('Content-Type: application/json; charset=utf-8');
@@ -44,7 +45,7 @@ $email   = $clean('email', 160);
 $message = $clean('message', 2000);
 $page    = $clean('page', 300);
 $about   = $clean('subject', 200); // which kuri / job this enquiry is about
-$ftype   = ($_POST['ftype'] ?? '') === 'job' ? 'job' : 'consult';
+$ftype   = in_array($_POST['ftype'] ?? '', ['job', 'agreement'], true) ? (string) $_POST['ftype'] : 'consult';
 $to      = $RECIPIENTS[$ftype];
 $from    = $to; // send from the same on-domain mailbox for good deliverability
 
@@ -54,7 +55,7 @@ if (strlen(preg_replace('/\D/', '', $phone)) < 7) {
     exit;
 }
 
-$label   = $ftype === 'job' ? 'Job Application' : 'Enquiry';
+$label   = $ftype === 'job' ? 'Job Application' : ($ftype === 'agreement' ? 'Filled Agreement' : 'Enquiry');
 $subject = ($about !== '' ? "New {$about}" : "New {$label}") . " — mazhuppelchits.com";
 
 $body  = "You have a new {$label} from the website:\n\n";
@@ -85,9 +86,9 @@ if ($cvErr === UPLOAD_ERR_OK) {
         'jpg'  => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp',
     ];
     $ext = strtolower(pathinfo((string) $cv['name'], PATHINFO_EXTENSION));
-    if ($cv['size'] > 6 * 1024 * 1024) {
+    if ($cv['size'] > 8 * 1024 * 1024) {
         http_response_code(422);
-        echo json_encode(['ok' => false, 'error' => 'Your CV is too large (max 6 MB).']);
+        echo json_encode(['ok' => false, 'error' => 'The file is too large (max 8 MB).']);
         exit;
     }
     if (!isset($types[$ext])) {
@@ -128,8 +129,8 @@ if ($cvErr === UPLOAD_ERR_OK) {
     $sent = @mail($to, $subject, $body, $headers, "-f{$from}");
 }
 
-// Store job applications in a private folder (outside public_html) for the CMS inbox.
-if ($ftype === 'job') {
+// Store job applications & filled-form uploads privately (outside public_html) for the CMS inbox.
+if ($ftype === 'job' || $ftype === 'agreement') {
     $appDir   = __DIR__ . '/../../applications';
     $cvStored = '';
     $cvName   = '';
@@ -148,6 +149,7 @@ if ($ftype === 'job') {
     if (!is_array($log)) { $log = []; }
     $log[]   = [
         'id'      => date('YmdHis') . bin2hex(random_bytes(3)),
+        'kind'    => $ftype === 'job' ? 'application' : 'agreement',
         'date'    => date('Y-m-d H:i:s'),
         'role'    => $about,
         'name'    => $name,
